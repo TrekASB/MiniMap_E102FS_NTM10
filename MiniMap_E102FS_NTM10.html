@@ -114,7 +114,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid 
 <body>
 <header class="topbar">
   <div class="title-container">
-    <img src="norconsult-logo-black.png" alt="Norconsult logo" class="logo">
+    <img src="https://raw.githubusercontent.com/TrekASB/MiniMap_E836Stokkv-gen_NTM13/main/norconsult-logo-black.png" alt="Norconsult logo" class="logo">
     <div class="title-block">
       <h1 class="title">MiniMap – E102FS</h1>
       <div class="org">Developed by Norconsult, AI-assisted development.</div>
@@ -169,7 +169,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid 
   </div>
   <div class="corner"><div id="levelBadge" class="level">NN2000 Z: –</div><svg id="compass" viewBox="0 0 48 48"><circle cx="24" cy="24" r="21" fill="#fff" stroke="#d8e0ee"/><polygon id="compassNeedle" points="24,5 28,24 24,20 20,24" fill="#0050b5"/><polygon id="compassNeedleS" points="24,43 20,24 24,28 28,24" fill="#98a2b3"/><text x="24" y="14" text-anchor="middle" font-size="7" font-weight="900" fill="#0050b5">N</text></svg></div>
   <div class="controls"><button id="zoomIn" class="ctrl">+</button><button id="zoomOut" class="ctrl">−</button><button id="resetView" class="ctrl" title="Zoom alle">⊙</button></div>
-  <div id="setupPanel" class="panel"><h3>Prosjektkoordinatsystem</h3><p class="hint">Denne versjonen er låst til Published coordinate reference system: Norway/EUREF89NTM | NTM Zone 10 | EPSG:5110. Høydesystem: NN2000. Modellkoordinater tolkes som X=øst og Y=nord i EUREF89 NTM sone 10.</p><div class="grid hidden"><div class="field"><label>Koordinatsystem</label><select id="cfgCRS"><option value="ntm10" selected>NTM10</option></select></div><div class="field"><label>Akser</label><select id="cfgAxis"><option value="xy" selected>X=øst, Y=nord</option></select></div><input id="cfgMX" value="0"><input id="cfgMY" value="0"><input id="cfgLat" value="61.0000000"><input id="cfgLng" value="13.5000000"><input id="cfgScaleX" value="1"><input id="cfgScaleY" value="1"><input id="cfgRotation" value="0"></div><div class="actions"><button id="closeCfg" class="btn">Lukk</button></div></div>
+  <div id="setupPanel" class="panel"><h3>Prosjektkoordinatsystem</h3><p class="hint">Denne versjonen er låst til Published coordinate reference system: Norway/EUREF89NTM | NTM Zone 10 | EPSG:5110. Høydesystem: NN2000. Modellkoordinater tolkes som X=øst og Y=nord i EUREF89 NTM sone 10.</p><div class="grid hidden"><div class="field"><label>Koordinatsystem</label><select id="cfgCRS"><option value="ntm10" selected>NTM10</option></select></div><div class="field"><label>Akser</label><select id="cfgAxis"><option value="xy" selected>X=øst, Y=nord</option></select></div><input id="cfgMX" value="0"><input id="cfgMY" value="0"><input id="cfgLat" value="60.0000000"><input id="cfgLng" value="10.5000000"><input id="cfgScaleX" value="1"><input id="cfgScaleY" value="1"><input id="cfgRotation" value="0"></div><div class="actions"><button id="closeCfg" class="btn">Lukk</button></div></div>
   <div id="toast" class="toast"></div>
 </div>
 <div class="info"><div class="cell"><span class="lab">Sted</span><span id="valPlace" class="val">–</span></div><div class="cell"><span class="lab">Adresse / veg</span><span id="valAddress" class="val">–</span></div><div class="cell"><span class="lab">Kommune</span><span id="valMunicipality" class="val">–</span></div><div class="cell"><span class="lab">Retning</span><span id="valDir" class="val">–</span></div></div>
@@ -191,7 +191,7 @@ proj4.defs('EPSG:25833','+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 
 
 function setStatus(type,text){$('statusText').textContent=text;$('statusDot').className='dot'+(type?' '+type:'');}
 function toast(msg,ms=2600){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._to);t._to=setTimeout(()=>t.classList.remove('show'),ms);}
-function modelToLatLng(x,y){try{const p=proj4(PROJECT_CRS,'EPSG:4326',[Number(x),Number(y)]);return L.latLng(p[1],p[0]);}catch(e){console.error('Koordinattransformasjon feilet',e);return L.latLng(61.0000000,13.5000000);}}
+function modelToLatLng(x,y){try{const p=proj4(PROJECT_CRS,'EPSG:4326',[Number(x),Number(y)]);return L.latLng(p[1],p[0]);}catch(e){console.error('Koordinattransformasjon feilet',e);return L.latLng(60.0000000,10.5000000);}}
 function latLngToModel(ll){const p=proj4('EPSG:4326',PROJECT_CRS,[ll.lng,ll.lat]);return {x:p[0],y:p[1],z:camPos.z};}
 function headingDeg(){let h=Math.atan2(camDir.x,camDir.y)*180/Math.PI;return (h+360)%360;}
 function cleanWmsUrl(url){return String(url||'').trim().split('?')[0];}
