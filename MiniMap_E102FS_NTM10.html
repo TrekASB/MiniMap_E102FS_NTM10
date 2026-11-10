@@ -129,7 +129,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid 
     <div class="row">
       <button id="centerCamera" class="btn" title="Sentrer kartet på kameraet">⌖ Sentrer</button>
       <button id="followBtn" class="btn active" title="Følg kameraet automatisk">● Følg kamera</button>
-      <a id="streetViewBtn" class="btn" href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" title="Åpne punktet i Google Maps. Velg den gule figuren og klikk på en blå veilinje.">Street View ↗</a>
+      <a id="streetViewBtn" class="btn" href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" title="Åpne Google Street View direkte ved kameraposisjonen i ny fane">Street View ↗</a>
       <button id="configBtn" class="btn primary" title="Fast prosjektsystem">EPSG:5110</button>
     </div>
     <div class="row">
@@ -137,10 +137,10 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid 
         <option value="arcgis_flyfoto">Flyfoto – Esri World Imagery</option>
         <option value="osm">Vektorkart – OpenStreetMap</option>
         <option value="grunnkart">Kartverket Norges grunnkart (WMS)</option>
-        <option value="kv_topo" selected>Kartverket topo (WMTS)</option>
+        <option value="kv_topo">Kartverket topo (WMTS)</option>
         <option value="kv_gray">Kartverket gråtone (WMTS)</option>
         <option value="kv_raster">Kartverket raster (WMTS)</option>
-        <option value="skanska_e102">Skanska E102 (WMS)</option>
+        <option value="skanska_e102" selected>Skanska E102 (WMS)</option>
         <option value="wms_fkb">Kartverket FKB (WMS)</option>
         <option value="google_sat">Google ortofoto</option>
         <option value="google_hybrid">Google hybrid</option>
@@ -170,7 +170,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid 
     <div class="checks options-row">
       <label><input type="checkbox" id="showFOV" checked> Synsfelt</label>
       <label><input type="checkbox" id="clickMove" checked> Klikk i kart flytter kamera</label>
-      <span class="badge">Standardkart: Kartverket topo (WMTS) · Fast CRS: EUREF89 NTM10 (EPSG:5110) · Høyde: NN2000</span>
+      <span class="badge">Standardkart: Skanska E102 (WMS) · Fast CRS: EUREF89 NTM10 (EPSG:5110) · Høyde: NN2000</span>
     </div>
   </div>
   <div class="corner"><div id="levelBadge" class="level">NN2000 Z: –</div><svg id="compass" viewBox="0 0 48 48"><circle cx="24" cy="24" r="21" fill="#fff" stroke="#d8e0ee"/><polygon id="compassNeedle" points="24,5 28,24 24,20 20,24" fill="#0050b5"/><polygon id="compassNeedleS" points="24,43 20,24 24,28 28,24" fill="#98a2b3"/><text x="24" y="14" text-anchor="middle" font-size="7" font-weight="900" fill="#0050b5">N</text></svg></div>
@@ -418,8 +418,8 @@ function initMap(){
   if(!mapEl)throw new Error('Kartbeholderen #gmap mangler.');
   map=L.map(mapEl,{zoomControl:false,preferCanvas:true,attributionControl:true}).setView([60.0000000,10.5000000],12);
   map.createPane('cameraPane');map.getPane('cameraPane').style.zIndex=700;
-  $('mapLayer').value='kv_topo';
-  setBaseLayer('kv_topo');
+  $('mapLayer').value='skanska_e102';
+  setBaseLayer($('mapLayer').value);
   $('zoomIn').onclick=()=>map.zoomIn();$('zoomOut').onclick=()=>map.zoomOut();$('resetView').onclick=fitAll;
   map.on('dragstart',()=>{followCamera=false;$('followBtn').classList.remove('active');});
   map.on('click',onMapClick);
@@ -623,7 +623,6 @@ function renderSection(){
 async function initTrimble(){try{API=await TrimbleConnectWorkspace.connect(window.parent,(event,args)=>{const ev=String(event).toLowerCase();if(ev.includes('camera')||ev.includes('view'))parseCamera(args?.data??args?.camera??args);});setStatus('live','Trimble tilkoblet');await safe(()=>API.viewer?.subscribeToCamera?.());await safe(()=>API.viewer?.enableCameraEvents?.());pollTimer=setInterval(pollCamera,700);pollCamera();}catch(e){console.error(e);setStatus('error','Trimble ikke tilkoblet');toast('Trimble Connect API ikke tilgjengelig');}}
 async function onMapClick(e){if(!$('clickMove')?.checked||!API||!hasCamera)return;const target=latLngToModel(e.latlng);const cam={position:{x:target.x,y:target.y,z:target.z},direction:camDir};let ok=false;const calls=[()=>API.viewer?.setCamera?.(cam),()=>API.viewer?.camera?.setCamera?.(cam),()=>API.viewer?.setView?.({camera:cam}),()=>API.viewer?.moveCamera?.(cam)];for(const c of calls){const r=await safe(c);if(r!==null){ok=true;break;}}camPos=target;updateCamera();toast(ok?'Kamera flyttet til NTM10-posisjon':'Kartposisjon beregnet, men Trimble API støtter ikke kameraflytting her');}
 function openStreetView(event){
-  // Åpne kartet ved punktet slik at brukeren kan velge et panorama på en blå veilinje.
   const ll=hasCamera?modelToLatLng(camPos.x,camPos.y):map?.getCenter();
   if(!ll||!Number.isFinite(ll.lat)||!Number.isFinite(ll.lng)){
     event?.preventDefault();
@@ -631,7 +630,8 @@ function openStreetView(event){
     return;
   }
   const point=`${ll.lat.toFixed(7)},${ll.lng.toFixed(7)}`;
-  event.currentTarget.href=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(point)}`;
+  const heading=Math.round(headingDeg())%360;
+  event.currentTarget.href=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${encodeURIComponent(point)}&heading=${heading}&pitch=0&fov=80`;
 }
 function wireUI(){
   $('centerCamera').onclick=()=>{if(hasCamera&&map)map.setView(modelToLatLng(camPos.x,camPos.y),Math.max(map.getZoom(),18));};
