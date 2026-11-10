@@ -47,7 +47,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid 
 .mini-sel:hover,.mini-input:hover{border-color:#b8c5d3}
 .mini-sel{min-width:230px;flex:1}
 .wms-url{min-width:280px;flex:3}.wms-layer{min-width:150px;flex:1}.fkb-layer{min-width:290px;flex:2}
-.wms-row,.fkb-row{display:none}.wms-row.show,.fkb-row.show{display:flex}
+.wms-row,.fkb-row,.skanska-row{display:none}.wms-row.show,.fkb-row.show,.skanska-row.show{display:flex}
 .btn{text-decoration:none;height:34px;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 12px;border:1px solid var(--border);border-radius:9px;background:#fff;color:var(--text);font-size:12px;font-weight:750;cursor:pointer;white-space:nowrap;box-shadow:0 1px 2px rgba(15,23,42,.03);transition:background .15s,border-color .15s,transform .08s,box-shadow .15s}
 .btn:hover{background:#f7faff;border-color:#a9bdd3;box-shadow:0 3px 10px rgba(15,23,42,.07)}
 .btn:active{transform:translateY(1px)}
@@ -140,6 +140,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid 
         <option value="kv_topo" selected>Kartverket topo (WMTS)</option>
         <option value="kv_gray">Kartverket gråtone (WMTS)</option>
         <option value="kv_raster">Kartverket raster (WMTS)</option>
+        <option value="skanska_e102">Skanska E102 (WMS)</option>
         <option value="wms_fkb">Kartverket FKB (WMS)</option>
         <option value="google_sat">Google ortofoto</option>
         <option value="google_hybrid">Google hybrid</option>
@@ -154,6 +155,11 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid 
       </select>
       <button id="refreshFkbLayers" class="btn" title="Hent lagliste fra Kartverkets GetCapabilities">Hent FKB-lag</button>
       <span class="badge">FKB WMS: velg lag og zoom nærmere enn ca. 1:12 000</span>
+    </div>
+    <div id="skanskaRow" class="row skanska-row">
+      <select id="skanskaLayerSelect" class="mini-sel fkb-layer" aria-label="Velg kartlag fra Skanska E102">
+        <option value="e102_drone_samlet">Droneortofoto – samlet</option>
+      </select>
     </div>
     <div id="wmsRow" class="row wms-row">
       <input id="wmsUrl" class="mini-input wms-url" placeholder="Lim inn WMS URL..." title="WMS URL">
@@ -244,6 +250,7 @@ async function reverseGeocode(ll){
 }
 
 const FKB_WMS_URL='https://wms.geonorge.no/skwms1/wms.fkb';
+const SKANSKA_WMS_URL='https://geoserver.skanska.no/geoserver/E102_FornebukryssetStrand/ows';
 const FKB_FALLBACK_LAYERS=[
   {name:'fkb',title:'Alle FKB-lag'},
   {name:'vann_omrade,vannkontur',title:'FKB Vann'},
@@ -258,9 +265,8 @@ const FKB_FALLBACK_LAYERS=[
   {name:'kommunegrenser,fylkesgrenser,riksgrense',title:'Administrative grenser'}
 ];
 let fkbLayersLoaded=false;
-function fillFkbLayerSelect(items){
-  const sel=$('fkbLayerSelect'); if(!sel)return;
-  const current=sel.value||'fkb';
+function fillLayerSelect(sel,items){
+  const current=sel.value;
   sel.innerHTML='';
   for(const it of items){
     const o=document.createElement('option'); o.value=it.name;
@@ -270,7 +276,7 @@ function fillFkbLayerSelect(items){
   if([...sel.options].some(o=>o.value===current))sel.value=current;
 }
 async function loadFkbLayersFromCapabilities(){
-  fillFkbLayerSelect(FKB_FALLBACK_LAYERS);
+  fillLayerSelect($('fkbLayerSelect'),FKB_FALLBACK_LAYERS);
   try{
     const res=await fetch(FKB_WMS_URL+'?SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.3.0',{mode:'cors'});
     if(!res.ok)throw new Error('HTTP '+res.status);
@@ -284,11 +290,52 @@ async function loadFkbLayersFromCapabilities(){
     const all=[{name:'fkb',title:'Alle FKB-lag'},...layers];
     const seen=new Set(), unique=[];
     for(const x of all){if(!seen.has(x.name)){unique.push(x);seen.add(x.name);}}
-    if(unique.length>1){fillFkbLayerSelect(unique);fkbLayersLoaded=true;toast('FKB-lagliste hentet fra Kartverket');}
+    if(unique.length>1){fillLayerSelect($('fkbLayerSelect'),unique);fkbLayersLoaded=true;toast('FKB-lagliste hentet fra Kartverket');}
   }catch(e){
     console.warn('FKB GetCapabilities feilet, bruker fallback-liste:',e);
     toast('Bruker lokal FKB-lagliste. GetCapabilities kunne ikke hentes.',3800);
   }
+}
+let skanskaLayersRequest;
+function loadSkanskaLayers(){
+  return skanskaLayersRequest ??= fetch(SKANSKA_WMS_URL+'?service=WMS&request=GetCapabilities&version=1.3.0')
+    .then(async response=>{
+      if(!response.ok)throw new Error('HTTP '+response.status);
+      const xml=new DOMParser().parseFromString(await response.text(),'text/xml');
+      const layers=new Map();
+      for(const node of xml.getElementsByTagNameNS('http://www.opengis.net/wms','Layer')){
+        const name=node.querySelector(':scope > Name')?.textContent.trim();
+        if(!name)continue;
+        const title=node.querySelector(':scope > Title')?.textContent.trim()||name;
+        layers.set(name,{name,title:name==='e102_drone_samlet'?'Droneortofoto – samlet':title});
+      }
+      if(!layers.size)throw new Error('Ingen WMS-lag i GetCapabilities');
+      const select=$('skanskaLayerSelect');
+      const current=select.value;
+      fillLayerSelect(select,layers.values());
+      if(select.value!==current)refreshSkanskaLayer();
+    })
+    .catch(error=>{
+      skanskaLayersRequest=undefined;
+      console.warn('Skanska WMS GetCapabilities feilet:',error);
+      if($('mapLayer').value==='skanska_e102')toast('Kunne ikke hente laglisten fra Skanska. Samlet droneortofoto er valgt.',5000);
+    });
+}
+function refreshSkanskaLayer(){
+  if(!map || $('mapLayer').value!=='skanska_e102')return;
+  if(customWmsLayer)map.removeLayer(customWmsLayer);
+  customWmsLayer=L.tileLayer.wms(SKANSKA_WMS_URL,{
+    layers:$('skanskaLayerSelect').value,
+    format:'image/png',
+    transparent:true,
+    version:'1.3.0',
+    crs:L.CRS.EPSG3857,
+    maxZoom:22,
+    zIndex:2,
+    attribution:'© Skanska'
+  });
+  customWmsLayer.once('tileerror',()=>toast('Kunne ikke hente kartflis fra Skanska WMS.',5000));
+  customWmsLayer.addTo(map);
 }
 function selectedFkbLayers(){return $('fkbLayerSelect')?.value || 'fkb';}
 function makeFkbLayer(){
@@ -313,6 +360,7 @@ function refreshFkbLayer(){
 }
 function toggleRows(key){
   $('fkbRow')?.classList.toggle('show',key==='wms_fkb');
+  $('skanskaRow')?.classList.toggle('show',key==='skanska_e102');
   $('wmsRow')?.classList.toggle('show',key==='wms_custom');
 }
 function setBaseLayer(key){
@@ -326,16 +374,22 @@ function setBaseLayer(key){
     arcgis_flyfoto:()=>L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'© Esri'}),
     osm:()=>L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}),
     grunnkart:()=>L.tileLayer.wms('https://wms.geonorge.no/skwms1/wms.norges_grunnkart',{layers:'Norges_grunnkart',format:'image/png',transparent:false,version:'1.3.0',crs:L.CRS.EPSG3857,maxZoom:22,attribution:'© Kartverket'}),
-    kv_topo:()=>L.tileLayer('https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png',{maxZoom:20,attribution:'© Kartverket'}),
+    kv_topo:(maxZoom=20)=>L.tileLayer('https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png',{maxZoom,maxNativeZoom:20,attribution:'© Kartverket'}),
     kv_gray:()=>L.tileLayer('https://cache.kartverket.no/v1/wmts/1.0.0/topograatone/default/webmercator/{z}/{y}/{x}.png',{maxZoom:20,attribution:'© Kartverket'}),
     kv_raster:()=>L.tileLayer('https://cache.kartverket.no/v1/wmts/1.0.0/toporaster/default/webmercator/{z}/{y}/{x}.png',{maxZoom:20,attribution:'© Kartverket'}),
     google_sat:()=>L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{maxZoom:22,attribution:'© Google'}),
     google_hybrid:()=>L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{maxZoom:22,attribution:'© Google'})
   };
 
+  if(key==='skanska_e102'){
+    baseLayer=base.kv_topo(22).addTo(map);
+    refreshSkanskaLayer();
+    loadSkanskaLayers();
+    return;
+  }
   if(key==='wms_fkb'){
     baseLayer=base.google_sat().addTo(map);
-    fillFkbLayerSelect(FKB_FALLBACK_LAYERS);
+    fillLayerSelect($('fkbLayerSelect'),FKB_FALLBACK_LAYERS);
     if(!fkbLayersLoaded)loadFkbLayersFromCapabilities().finally(refreshFkbLayer);
     else refreshFkbLayer();
     return;
@@ -584,6 +638,7 @@ function wireUI(){
   $('centerCamera').onclick=()=>{if(hasCamera&&map)map.setView(modelToLatLng(camPos.x,camPos.y),Math.max(map.getZoom(),18));};
   $('followBtn').onclick=()=>{followCamera=!followCamera;$('followBtn').classList.toggle('active',followCamera);if(followCamera)$('centerCamera').click();};
   $('mapLayer').onchange=()=>setBaseLayer($('mapLayer').value);
+  $('skanskaLayerSelect').onchange=refreshSkanskaLayer;
   $('fkbLayerSelect').onchange=()=>{if($('mapLayer').value!=='wms_fkb'){$('mapLayer').value='wms_fkb';setBaseLayer('wms_fkb');}else refreshFkbLayer();};
   $('refreshFkbLayers').onclick=async()=>{if($('mapLayer').value!=='wms_fkb'){$('mapLayer').value='wms_fkb';setBaseLayer('wms_fkb');}await loadFkbLayersFromCapabilities();refreshFkbLayer();};
   $('applyWms')?.addEventListener('click',()=>{if($('mapLayer').value!=='wms_custom'){$('mapLayer').value='wms_custom';setBaseLayer('wms_custom');}else addCustomWMS(true);});
