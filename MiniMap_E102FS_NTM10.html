@@ -159,7 +159,9 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid 
     <div id="skanskaRow" class="row skanska-row">
       <select id="skanskaLayerSelect" class="mini-sel fkb-layer" aria-label="Velg kartlag fra Skanska E102">
         <option value="e102_drone_samlet">Droneortofoto – samlet</option>
+        <option value="Anleggsgrense_E102">Anleggsgrense E102</option>
       </select>
+      <button id="retrySkanska" class="btn" title="Hent laglisten og kartbildene fra Skanska på nytt">Prøv WMS på nytt</button>
     </div>
     <div id="wmsRow" class="row wms-row">
       <input id="wmsUrl" class="mini-input wms-url" placeholder="Lim inn WMS URL..." title="WMS URL">
@@ -251,6 +253,7 @@ async function reverseGeocode(ll){
 
 const FKB_WMS_URL='https://wms.geonorge.no/skwms1/wms.fkb';
 const SKANSKA_WMS_URL='https://geoserver.skanska.no/geoserver/E102_FornebukryssetStrand/ows';
+const SKANSKA_LAYER_CACHE='minimap-e102-skanska-wms-layers-v1';
 const FKB_FALLBACK_LAYERS=[
   {name:'fkb',title:'Alle FKB-lag'},
   {name:'vann_omrade,vannkontur',title:'FKB Vann'},
@@ -296,9 +299,22 @@ async function loadFkbLayersFromCapabilities(){
     toast('Bruker lokal FKB-lagliste. GetCapabilities kunne ikke hentes.',3800);
   }
 }
-let skanskaLayersRequest;
-function loadSkanskaLayers(){
-  return skanskaLayersRequest ??= fetch(SKANSKA_WMS_URL+'?service=WMS&request=GetCapabilities&version=1.3.0')
+let skanskaLayersRequest,skanskaLayersLoaded=false;
+function restoreSkanskaLayers(){
+  try{
+    const layers=JSON.parse(localStorage.getItem(SKANSKA_LAYER_CACHE));
+    if(Array.isArray(layers) && layers.length && layers.every(layer=>typeof layer?.name==='string' && typeof layer.title==='string')){
+      fillLayerSelect($('skanskaLayerSelect'),layers);
+    }
+  }catch{
+    // Trimble Connect kan blokkere lokal lagring for innebygde utvidelser.
+  }
+}
+function loadSkanskaLayers(force=false){
+  if(skanskaLayersLoaded && !force)return;
+  return skanskaLayersRequest ??= fetch(SKANSKA_WMS_URL+'?service=WMS&request=GetCapabilities&version=1.3.0',{
+    signal:AbortSignal.timeout(15000)
+  })
     .then(async response=>{
       if(!response.ok)throw new Error('HTTP '+response.status);
       const xml=new DOMParser().parseFromString(await response.text(),'text/xml');
@@ -312,14 +328,18 @@ function loadSkanskaLayers(){
       if(!layers.size)throw new Error('Ingen WMS-lag i GetCapabilities');
       const select=$('skanskaLayerSelect');
       const current=select.value;
-      fillLayerSelect(select,layers.values());
+      const items=[...layers.values()];
+      fillLayerSelect(select,items);
+      skanskaLayersLoaded=true;
+      try{localStorage.setItem(SKANSKA_LAYER_CACHE,JSON.stringify(items));}catch{}
       if(select.value!==current)refreshSkanskaLayer();
     })
     .catch(error=>{
-      skanskaLayersRequest=undefined;
+      skanskaLayersLoaded=false;
       console.warn('Skanska WMS GetCapabilities feilet:',error);
-      if($('mapLayer').value==='skanska_e102')toast('Kunne ikke hente laglisten fra Skanska. Samlet droneortofoto er valgt.',5000);
-    });
+      if($('mapLayer').value==='skanska_e102')toast('Kunne ikke oppdatere laglisten fra Skanska WMS.',5000);
+    })
+    .finally(()=>{skanskaLayersRequest=undefined;});
 }
 function refreshSkanskaLayer(){
   if(!map || $('mapLayer').value!=='skanska_e102')return;
@@ -638,6 +658,16 @@ function wireUI(){
   $('followBtn').onclick=()=>{followCamera=!followCamera;$('followBtn').classList.toggle('active',followCamera);if(followCamera)$('centerCamera').click();};
   $('mapLayer').onchange=()=>setBaseLayer($('mapLayer').value);
   $('skanskaLayerSelect').onchange=refreshSkanskaLayer;
+  $('retrySkanska').onclick=async event=>{
+    const button=event.currentTarget;
+    button.disabled=true;
+    try{
+      refreshSkanskaLayer();
+      await loadSkanskaLayers(true);
+    }finally{
+      button.disabled=false;
+    }
+  };
   $('fkbLayerSelect').onchange=()=>{if($('mapLayer').value!=='wms_fkb'){$('mapLayer').value='wms_fkb';setBaseLayer('wms_fkb');}else refreshFkbLayer();};
   $('refreshFkbLayers').onclick=async()=>{if($('mapLayer').value!=='wms_fkb'){$('mapLayer').value='wms_fkb';setBaseLayer('wms_fkb');}await loadFkbLayersFromCapabilities();refreshFkbLayer();};
   $('applyWms')?.addEventListener('click',()=>{if($('mapLayer').value!=='wms_custom'){$('mapLayer').value='wms_custom';setBaseLayer('wms_custom');}else addCustomWMS(true);});
@@ -649,6 +679,7 @@ function wireUI(){
 function boot(){
   try{
     wireUI();
+    restoreSkanskaLayers();
     setStatus('','Laster kart…');
     initMap();
     initTrimble();
