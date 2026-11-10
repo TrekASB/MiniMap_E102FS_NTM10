@@ -129,7 +129,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid 
     <div class="row">
       <button id="centerCamera" class="btn" title="Sentrer kartet på kameraet">⌖ Sentrer</button>
       <button id="followBtn" class="btn active" title="Følg kameraet automatisk">● Følg kamera</button>
-      <a id="streetViewBtn" class="btn" href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" title="Åpne Google Street View i ny fane">Street View ↗</a>
+      <a id="streetViewBtn" class="btn" href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" title="Åpne punktet i Google Maps. Velg den gule figuren og klikk på en blå veilinje.">Street View ↗</a>
       <button id="configBtn" class="btn primary" title="Fast prosjektsystem">EPSG:5110</button>
     </div>
     <div class="row">
@@ -623,16 +623,15 @@ function renderSection(){
 async function initTrimble(){try{API=await TrimbleConnectWorkspace.connect(window.parent,(event,args)=>{const ev=String(event).toLowerCase();if(ev.includes('camera')||ev.includes('view'))parseCamera(args?.data??args?.camera??args);});setStatus('live','Trimble tilkoblet');await safe(()=>API.viewer?.subscribeToCamera?.());await safe(()=>API.viewer?.enableCameraEvents?.());pollTimer=setInterval(pollCamera,700);pollCamera();}catch(e){console.error(e);setStatus('error','Trimble ikke tilkoblet');toast('Trimble Connect API ikke tilgjengelig');}}
 async function onMapClick(e){if(!$('clickMove')?.checked||!API||!hasCamera)return;const target=latLngToModel(e.latlng);const cam={position:{x:target.x,y:target.y,z:target.z},direction:camDir};let ok=false;const calls=[()=>API.viewer?.setCamera?.(cam),()=>API.viewer?.camera?.setCamera?.(cam),()=>API.viewer?.setView?.({camera:cam}),()=>API.viewer?.moveCamera?.(cam)];for(const c of calls){const r=await safe(c);if(r!==null){ok=true;break;}}camPos=target;updateCamera();toast(ok?'Kamera flyttet til NTM10-posisjon':'Kartposisjon beregnet, men Trimble API støtter ikke kameraflytting her');}
 function openStreetView(event){
-  // Bruk en ekte brukeraktivert lenke: ingen window.open() eller popup-returverdi.
-  // Nettleseren utfører standard navigering etter at klikkhendelsen har oppdatert href.
+  // Åpne kartet ved punktet slik at brukeren kan velge et panorama på en blå veilinje.
   const ll=hasCamera?modelToLatLng(camPos.x,camPos.y):map?.getCenter();
   if(!ll||!Number.isFinite(ll.lat)||!Number.isFinite(ll.lng)){
     event?.preventDefault();
     toast('Ingen gyldig kartposisjon tilgjengelig');
     return;
   }
-  const url=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll.lat.toFixed(7)},${ll.lng.toFixed(7)}&heading=${Math.round(headingDeg())}&pitch=0&fov=80`;
-  event.currentTarget.href=url;
+  const point=`${ll.lat.toFixed(7)},${ll.lng.toFixed(7)}`;
+  event.currentTarget.href=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(point)}`;
 }
 function wireUI(){
   $('centerCamera').onclick=()=>{if(hasCamera&&map)map.setView(modelToLatLng(camPos.x,camPos.y),Math.max(map.getZoom(),18));};
